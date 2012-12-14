@@ -19,6 +19,7 @@ import org.openflow.protocol.OFType;
 import org.openflow.protocol.OFVendor;
 import org.openflow.util.U16;
 import org.openflow.vendor.openflow.OFOpenFlowVendorData;
+import org.openflow.vendor.openflow.OFQueueDeleteVendorData;
 import org.openflow.vendor.openflow.OFQueueModifyVendorData;
 
 import net.floodlightcontroller.core.FloodlightContext;
@@ -190,8 +191,7 @@ public class QueueTestController implements IOFMessageListener, IOFSwitchListene
         prop.setType(OFQueuePropType.OFPQT_MIN_RATE);
         prop.setRate(rate);
 
-        OFPacketQueue queue = new OFPacketQueue();
-        queue.setQueueId(queueId);
+        OFPacketQueue queue = new OFPacketQueue(queueId);
         queue.setProperties(new ArrayList<OFQueueProp>(Arrays.asList(prop)));
 
         OFQueueModifyVendorData queueModifyData = new OFQueueModifyVendorData();
@@ -202,14 +202,29 @@ public class QueueTestController implements IOFMessageListener, IOFSwitchListene
         sendOFVendorData(sw, queueModifyData);
     }
 
+    private void deleteQueue(IOFSwitch sw, short portNumber, int queueId) {
+        OFPacketQueue queue = new OFPacketQueue(queueId);
+
+        OFQueueDeleteVendorData queueDeleteData = new OFQueueDeleteVendorData();
+        queueDeleteData.setPortNumber(portNumber);
+        queueDeleteData.setQueues(
+                new ArrayList<OFPacketQueue>(Arrays.asList(queue)));
+
+        sendOFVendorData(sw, queueDeleteData);
+    }
+
     @Override
     public void addedSwitch(IOFSwitch sw) {
         getAllQueueConfigs(sw);
+        sendBarrier(sw);
 
+        deleteQueue(sw, (short) 2, 30);
+        sendBarrier(sw);
+
+        getAllQueueConfigs(sw);
         sendBarrier(sw);
 
         createQueue(sw, (short) 2, 30, (short) 70);
-
         sendBarrier(sw);
 
         getAllQueueConfigs(sw);
