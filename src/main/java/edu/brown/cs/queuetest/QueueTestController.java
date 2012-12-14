@@ -1,10 +1,12 @@
 package edu.brown.cs.queuetest;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
+import org.openflow.protocol.OFBarrierRequest;
 import org.openflow.protocol.OFMessage;
 import org.openflow.protocol.OFPacketQueue;
 import org.openflow.protocol.OFPhysicalPort;
@@ -12,8 +14,12 @@ import org.openflow.protocol.OFPort;
 import org.openflow.protocol.OFQueueGetConfigRequest;
 import org.openflow.protocol.OFQueueGetConfigReply;
 import org.openflow.protocol.OFQueueProp;
+import org.openflow.protocol.OFQueueProp.OFQueuePropType;
 import org.openflow.protocol.OFType;
+import org.openflow.protocol.OFVendor;
 import org.openflow.util.U16;
+import org.openflow.vendor.openflow.OFOpenFlowVendorData;
+import org.openflow.vendor.openflow.OFQueueModifyVendorData;
 
 import net.floodlightcontroller.core.FloodlightContext;
 import net.floodlightcontroller.core.IOFMessageListener;
@@ -127,8 +133,7 @@ public class QueueTestController implements IOFMessageListener, IOFSwitchListene
         return Command.CONTINUE;
     }
 
-    @Override
-    public void addedSwitch(IOFSwitch sw) {
+    private void getAllQueueConfigs(IOFSwitch sw) {
         OFQueueGetConfigRequest m = new OFQueueGetConfigRequest();
         
         Collection<OFPhysicalPort> ports = sw.getPorts();
@@ -148,8 +153,66 @@ public class QueueTestController implements IOFMessageListener, IOFSwitchListene
                 logger.error("Tried to write to switch {} but got {}", sw.getId(), e.getMessage());
             } 
         }
-        
+
         sw.flush();
+    }
+
+    private void sendBarrier(IOFSwitch sw) {
+        OFBarrierRequest m = new OFBarrierRequest();
+        try {
+            sw.write(m, null);
+        } catch (IOException e) {
+            logger.error("Tried to write to switch {} but got {}", sw.getId(), e.getMessage());
+        }
+
+        sw.flush();
+    }
+
+    private void sendOFVendorData(IOFSwitch sw, OFOpenFlowVendorData data) {
+        OFVendor msg = (OFVendor) this.floodlightProvider.
+                getOFMessageFactory().getMessage(OFType.VENDOR);
+        msg.setVendor(OFOpenFlowVendorData.OF_VENDOR_ID);
+
+        msg.setVendorData(data);
+        msg.setLengthU(OFVendor.MINIMUM_LENGTH + data.getLength());
+
+        try {
+            sw.write(msg, null);
+        } catch (IOException e) {
+            logger.error("Tried to write to switch {} but got {}", sw.getId(), e.getMessage());
+        }
+
+        sw.flush();
+    }
+
+    private void createQueue(IOFSwitch sw, short portNumber, int queueId, short rate) {
+        OFQueueProp prop = new OFQueueProp();
+        prop.setType(OFQueuePropType.OFPQT_MIN_RATE);
+        prop.setRate(rate);
+
+        OFPacketQueue queue = new OFPacketQueue();
+        queue.setQueueId(queueId);
+        queue.setProperties(new ArrayList<OFQueueProp>(Arrays.asList(prop)));
+
+        OFQueueModifyVendorData queueModifyData = new OFQueueModifyVendorData();
+        queueModifyData.setPortNumber(portNumber);
+        queueModifyData.setQueues(
+                new ArrayList<OFPacketQueue>(Arrays.asList(queue)));
+
+        sendOFVendorData(sw, queueModifyData);
+    }
+
+    @Override
+    public void addedSwitch(IOFSwitch sw) {
+        getAllQueueConfigs(sw);
+
+        sendBarrier(sw);
+
+        createQueue(sw, (short) 2, 30, (short) 70);
+
+        sendBarrier(sw);
+
+        getAllQueueConfigs(sw);
     }
 
     @Override
