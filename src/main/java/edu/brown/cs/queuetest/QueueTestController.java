@@ -120,7 +120,7 @@ public class QueueTestController implements IOFMessageListener, IOFSwitchListene
             
             break;
         default:
-            System.out.println("a message unknow" + msg.getType());
+            System.out.println("unexpected message type: " + msg.getType());
 
         };
         
